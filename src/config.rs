@@ -15,9 +15,10 @@ impl Config {
         Ok(Self {
             database_url: env::var("DATABASE_URL")?,
             redpanda_brokers: env::var("REDPANDA_BROKERS")?,
-            http_host: env::var("LANDLORD_HOST").unwrap_or_else(|_| "0.0.0.0".into()),
+            http_host: env::var("LANDLORD_HOST")
+                .unwrap_or_else(|_| "0.0.0.0".into()),
             http_port: env::var("LANDLORD_PORT")
-                .unwarp_or_else(|_| "8081".into())
+                .unwrap_or_else(|_| "8081".into())
                 .parse()?,
         })
     }
@@ -27,9 +28,9 @@ pub async fn create_pool(database_url: &str) -> anyhow::Result<PgPool> {
     let pool = PgPoolOptions::new()
         .max_connections(50)
         .min_connections(5)
-        .acqure_timeout(Duration::from_secs(3))
-        .idle_timeout(Duration::from_mins(10))
-        .max_lifetime(Duration::from_mins(30))
+        .acquire_timeout(Duration::from_secs(3))
+        .idle_timeout(Duration::from_secs(10 * 60))
+        .max_lifetime(Duration::from_secs(30 * 60))
         .test_before_acquire(true) // Reliability and performance tuning
         .connect(database_url)
         .await?;
