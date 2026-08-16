@@ -4,17 +4,17 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, Serialize, Deserialize)]
-#[sqlx(type_name = "user_role")]
+#[sqlx(type_name = "user_members.user_role")]
 pub enum UserRole { User, Moderator, Admin }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, Serialize, Deserialize)]
-#[sqlx(type_name = "auth_provider")]
+#[sqlx(type_name = "user_members.auth_provider")]
 pub enum AuthProvider {
     Local, Google, Apple
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, sqlx::Type, Serialize, Deserialize)]
-#[sqlx(type_name = "user_audit_action")]
+#[sqlx(type_name = "user_members.user_audit_action")]
 pub enum UserAuditAction {
     AccountCreated, AccountUpdated, AccountDeactivated,
     AccountDeleted, LoginSucceeded, LoginFailed,
