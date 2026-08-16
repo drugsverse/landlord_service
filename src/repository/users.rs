@@ -13,7 +13,7 @@ fn encrypt_field(cleartext: &str) -> Vec<u8> {
 pub async fn save_new_user_tx(
     pool: &PgPool,
     event: UserCreatedEvent,
-    password_hash: String
+    password_hash: Option<String>
 ) -> Result<(), sqlx::Error> {
     let mut tx: Transaction<'_, Postgres> = pool.begin().await?;
 
@@ -133,7 +133,7 @@ mod user_tests {
             action: UserAuditAction::AccountCreated,
             provider: AuthProvider::Local,
         };
-        let secure_password_hash = "$argon2id$v=19$m=19456...hashed_pass".to_string();
+        let secure_password_hash = Some("$argon2id$v=19$m=19456...hashed_pass".to_string());
 
         // Run Registration Transaction Pipeline
         let execution_result = save_new_user_tx(&pool, registration_event, secure_password_hash.clone()).await;
@@ -177,7 +177,7 @@ mod user_tests {
         println!("The user identity is {:#?}", identity);
         assert_eq!(identity.provider, AuthProvider::Local);
         assert_eq!(identity.provider_id, "patientzero@gmail.com");
-        assert_eq!(identity.password_hash.unwrap(), secure_password_hash);
+        assert_eq!(identity.password_hash.unwrap(), secure_password_hash.unwrap());
 
         // Verify Audit Log Sequencing 
         let log = sqlx::query!(
