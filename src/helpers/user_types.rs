@@ -54,7 +54,7 @@ pub struct DbUserIdentity {
     pub id: Uuid,
     pub user_id: Uuid,
     pub provider: AuthProvider,
-    pub provider_id: String,
+    pub provider_id: String, // Google/Apple ID, email for Local provider.
     pub password_hash: Option<String>,
     pub email_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -70,6 +70,17 @@ pub struct DbUserAuditLog {
     pub ip_address: Option<String>,
     pub user_agent: Option<String>,
     pub access_timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct UserLoginCredentials {
+    pub user_id: Uuid,
+    pub username: String,
+    pub role: UserRole,
+    pub locale: String,
+    pub is_active: bool,
+    pub password_hash: Option<String>,
+    pub email_verified_at: Option<DateTime<Utc>>,
 }
 
 /// REDPANDA EVENT PAYLOADS

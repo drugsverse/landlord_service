@@ -1,4 +1,5 @@
 //! Program entrypoint.
+#![allow(warnings)]
 mod helpers;
 mod repository;
 
