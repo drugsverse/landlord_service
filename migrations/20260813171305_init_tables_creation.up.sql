@@ -2,6 +2,8 @@
 CREATE SCHEMA IF NOT EXISTS user_members;
 SET search_path TO user_members, public;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
+
 CREATE TYPE user_role AS ENUM ('User', 'Moderator', 'Admin');
 CREATE TYPE auth_provider AS ENUM ('Local', 'Google', 'Apple');
 CREATE TYPE user_audit_action AS ENUM (
@@ -74,7 +76,7 @@ CREATE TABLE user_audit_logs (
 CREATE INDEX idx_user_identities_provider_lookup ON user_identities (provider, provider_id);
 
 -- Speed up audit log retrievals, sorting them chronologically for individual users
-CREATE INDEX idx_user_audit_logs_user_timestamp ON user_audit_logs (user_id, access_timestamp DESC);
+CREATE INDEX idx_user_audit_logs_user_timestamp ON user_audit_logs (user_id, access_timestamp DESC) INCLUDE (action);
 
 -- Partial index for active users to prevent scanning deleted users during auth cycles
 CREATE INDEX idx_users_active_only ON users (id) WHERE deleted_at IS NULL;

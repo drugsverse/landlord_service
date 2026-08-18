@@ -5,6 +5,7 @@ use sqlx::{PgPool, postgres::PgPoolOptions};
 #[derive(Clone, Debug)]
 pub struct Config {
     pub database_url: String,
+    pub db_encryption_key: String,
     pub redpanda_brokers: String,
     pub http_host: String,
     pub http_port: u16,
@@ -14,6 +15,7 @@ impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         Ok(Self {
             database_url: env::var("DATABASE_URL")?,
+            db_encryption_key: env::var("DB_ENCRYPTION_KEY")?,
             redpanda_brokers: env::var("REDPANDA_BROKERS")?,
             http_host: env::var("LANDLORD_HOST")
                 .unwrap_or_else(|_| "0.0.0.0".into()),

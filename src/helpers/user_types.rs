@@ -72,6 +72,8 @@ pub struct DbUserAuditLog {
     pub access_timestamp: DateTime<Utc>,
 }
 
+/// DB Query response objects.
+///
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UserLoginCredentials {
     pub user_id: Uuid,
@@ -81,6 +83,47 @@ pub struct UserLoginCredentials {
     pub is_active: bool,
     pub password_hash: Option<String>,
     pub email_verified_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserProfileView {
+    pub user_id: Uuid,
+    pub username: String,
+    pub email: String,
+    pub first_name: String,
+    pub last_name: String,
+    pub telephone: String,
+    pub about: Option<String>,
+    pub avatar_url: Option<String>,
+    pub country: String,
+    pub timezone: String,
+    pub locale: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ConnectedIdentityView {
+    pub identity_id: Uuid,
+    pub provider: AuthProvider,
+    pub provider_id: String,
+    pub email_verified_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuditLogView {
+    pub log_id: Uuid,
+    pub actor_id: Uuid,
+    pub action: UserAuditAction,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub access_timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+// Handles optional filtering and pagination rules.
+pub struct AuditLogQueryFilters {
+    pub action: Option<String>, // Filter by action, e.g PasswordChange
+    pub before_timestamp: Option<DateTime<Utc>>, // Cursor for next page
+    pub limit: i64, // Page size
 }
 
 /// REDPANDA EVENT PAYLOADS
