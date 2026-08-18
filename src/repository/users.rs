@@ -198,6 +198,129 @@ pub async fn fetch_user_audit_logs(
     }).collect())
 }
 
+/// Updating the user profile.
+pub async fn update_user_profile_partial(
+    pool: &PgPool, user_id: Uuid,
+    first_name: Option<&str>, last_name: Option<&str>,
+    telephone: Option<&str>, about: Option<&str>,
+    avatar_url: Option<&str>, db_encryption_key: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+            UPDATE user_members.user_profiles
+            SET
+                first_name = COALESCE(
+                    CASE WHEN $2::text IS NOT NULL THEN pgp_sym_encrypt($2, $5) END,
+                    first_name
+                ),
+                last_name = COALESCE(
+                    CASE WHEN $3::text IS NOT NULL THEN pgp_sym_encrypt($3, $5) END,
+                    last_name
+                ),
+                telephone = COALESCE(
+                    CASE WHEN $4::text IS NOT NULL THEN pgp_sym_encrypt($4, $5) END,
+                    telephone
+                ),
+                about = COALESCE($6, about),
+                avatar_url = COALESCE($7, avatar_url)
+            WHERE user_id = $1
+
+        "#,
+        user_id, first_name, last_name,
+        telephone, db_encryption_key, about, avatar_url
+    ).execute(pool).await?;
+    Ok(())
+}
+
+/// Email verification.
+pub async fn verify_user_email(
+    pool: &PgPool, user_id: Uuid, provider: AuthProvider
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+            UPDATE user_members.user_identities
+            SET email_verified_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1 AND provider = $2::user_members.auth_provider
+        "#,
+        user_id, provider as AuthProvider
+    ).execute(pool).await?;
+    Ok(())
+}
+
+/// Changing password.
+pub async fn update_password_hash(
+    pool: &PgPool, user_id: Uuid, new_hash: &str
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+            UPDATE user_members.user_identities
+            SET password_hash = $2, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1 AND provider = 'Local'::user_members.auth_provider
+        "#,
+        user_id, new_hash
+    ).execute(pool).await?;
+    Ok(())
+}
+
+/// Account Link or Unlink. For multitenant auth mutations.
+pub async fn unlink_auth_provider(
+    pool: &PgPool, user_id: Uuid, provider: AuthProvider
+) -> Result<(), sqlx::Error> {
+    // Prevent unlinking if it is their last remaining identity to avoid permanent lockout
+    sqlx::query!(
+        r#"
+            DELETE FROM user_members.user_identities
+            WHERE user_id = $1
+                AND provider = $2::user_members.auth_provider
+                AND (SELECT COUNT(*) FROM user_members.user_identities WHERE user_id = $1) > 1
+        "#, user_id, provider as AuthProvider
+    ).execute(pool).await?;
+    Ok(())
+}
+
+/// Account disabling and deletion
+pub async fn soft_delete_user_account(pool: &PgPool, user_id: Uuid) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+
+    // Mark user record as deleted and inactive
+    sqlx::query!(
+        r#"
+            UPDATE user_members.users
+            SET is_active = FALSE, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+        "#, user_id
+    ).execute(&mut *tx).await?;
+
+    // Clear out session security vectors. Remove password hashes to prevent credentials reuse
+    sqlx::query!(
+        r#"
+            UPDATE user_members.user_identities
+            SET password_hash = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = $1
+        "#, user_id
+    ).execute(&mut *tx).await?;
+
+    tx.commit().await?;
+    Ok(())
+}
+
+/// Appending routine logs during standard application interracitions.
+pub async fn record_logs(
+    pool: &PgPool, user_id: Uuid, actor_id: Uuid,
+    action: UserAuditAction, ip_address: Option<&str>,
+    user_agent: Option<&str>
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+            INSERT INTO user_members.user_audit_logs (id, user_id, actor_id, action, ip_address, user_agent)
+            VALUES ($1, $2, $3, $4::user_members.user_audit_action, $5,$6)
+        "#,
+        Uuid::now_v7(), user_id, actor_id, action as UserAuditAction,
+        ip_address, user_agent
+    ).execute(pool).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod user_tests {
     use super::*;
