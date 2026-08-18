@@ -126,6 +126,24 @@ pub struct AuditLogQueryFilters {
     pub limit: i64, // Page size
 }
 
+#[derive(Debug, Deserialize)]
+pub struct MasterUserFilters {
+    pub search_term: Option<String>, // Search agains username or email
+    pub role: Option<UserRole>,
+    pub is_active: Option<bool>,
+    pub show_deleted: Option<bool>, // Toggle to see soft deleted users
+    pub page: i64, // Standard page offset. e.g 1, 2, 3
+    pub page_size: i64, // Items per page e.g 20
+}
+
+#[derive(Debug, Serialize)]
+pub struct PaginatedUserResponse {
+    pub users: Vec<UserProfileView>,
+    pub total_count: i64,
+    pub total_pages: i64,
+    pub current_page: i64,
+}
+
 /// REDPANDA EVENT PAYLOADS
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]

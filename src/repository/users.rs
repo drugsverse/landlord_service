@@ -5,6 +5,7 @@ use crate::helpers::user_types::{
     UserAuditAction, AuthProvider, UserCreatedEvent,
     UserRole, UserLoginCredentials, UserProfileView,
     ConnectedIdentityView, AuditLogView, AuditLogQueryFilters,
+    MasterUserFilters, PaginatedUserResponse,
 };
 
 /// Adding a new user to the database.
@@ -319,6 +320,91 @@ pub async fn record_logs(
         ip_address, user_agent
     ).execute(pool).await?;
     Ok(())
+}
+
+/// Fetching all the users.
+pub async fn fetch_all_users(
+    pool: &PgPool, filters: MasterUserFilters, db_encryption_key: &str
+) -> Result<PaginatedUserResponse, sqlx::Error> {
+    // Calculating the sql offset row boundary.
+    let offset = (filters.page - 1) * filters.page_size;
+    let search_pattern = filters.search_term.map(|s| format!("%{}%",s.trim().to_lowercase()));
+    let show_deleted = filters.show_deleted.unwrap_or(false);
+
+    // Querying total matching records for pagination metadata calc
+    let total_count = sqlx::query!(
+        r#"
+            SELECT COUNT(*) as "count!"
+            FROM user_members.users u
+            INNER JOIN user_members.user_profiles p ON u.id = p.user_id
+            WHERE
+                ($1::text IS NULL OR LOWER(u.username) LIKE $1 OR LOWER(p.email) LIKE $1)
+                AND ($2::user_members.user_role IS NULL OR u.role = $2)
+                AND ($3::boolean IS NULL OR u.is_active = $3)
+                AND ($4::boolean = TRUE OR u.deleted_at IS NULL)
+        "#,
+        search_pattern,
+        filters.role as Option<UserRole>,
+        filters.is_active, show_deleted
+    ).fetch_one(pool).await?.count;
+
+    // Early return if no matching records are found.
+    if total_count == 0 {
+        return Ok(PaginatedUserResponse {
+            users: vec![],
+            total_count: 0,
+            total_pages: 0,
+            current_page: filters.page
+        });
+    }
+
+    // Fetch the target data slice and decrypt values.
+    let records = sqlx::query!(
+        r#"
+            SELECT
+                u.id, u.username, u.timezone, u.locale,
+                p.email, p.about, p.avatar_url, p.country,
+                pgp_sym_decrypt(p.first_name, $7) as "first_name!",
+                pgp_sym_decrypt(p.last_name, $7) as "last_name!",
+                pgp_sym_decrypt(p.telephone, $7) as "telephone!"
+            FROM user_members.users u
+            INNER JOIN user_members.user_profiles p ON u.id = p.user_id
+            WHERE
+                ($1::text IS NULL OR LOWER(u.username) LIKE $1 OR LOWER(p.email) LIKE $1)
+                AND ($2::user_members.user_role IS NULL OR u.role = $2)
+                AND ($3::boolean IS NULL OR u.is_active = $3)
+                AND ($4::boolean = TRUE OR u.deleted_at IS NULL)
+            ORDER BY u.created_at DESC
+            LIMIT $5 OFFSET $6
+        "#,
+        search_pattern, filters.role as Option<UserRole>,
+        filters.is_active, show_deleted, filters.page_size,
+        offset, db_encryption_key
+    ).fetch_all(pool).await?;
+
+    // Map records into commin view payloads.
+    let users = records.into_iter().map(|p| UserProfileView {
+        user_id: p.id,
+        username: p.username,
+        email: p.email,
+        first_name: p.first_name,
+        last_name: p.last_name,
+        telephone: p.telephone,
+        about: p.about,
+        avatar_url: p.avatar_url,
+        country: p.country,
+        timezone: p.timezone,
+        locale: p.locale
+    }).collect();
+
+    let total_pages = (total_count as f64 / filters.page_size as f64).ceil() as i64;
+
+    Ok(PaginatedUserResponse {
+        users,
+        total_count,
+        total_pages,
+        current_page: filters.page
+    })
 }
 
 #[cfg(test)]
