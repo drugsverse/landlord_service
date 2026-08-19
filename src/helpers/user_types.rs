@@ -179,3 +179,17 @@ pub struct UserCreatedEvent {
     pub action: UserAuditAction,
     pub provider: AuthProvider,
 }
+
+/// APPLICATION EVENTS.
+#[derive(Debug)]
+pub enum UserEvent{
+    Registration(UserCreatedEvent),
+    Login(UserLoginCredentials),
+}
+
+pub struct UserJob {
+    pub topic: String,
+    pub partition: i32,
+    pub offset: i64,
+    pub event: UserEvent,
+}

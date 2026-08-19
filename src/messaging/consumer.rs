@@ -1,139 +1,65 @@
-use rdkafka::{
-    consumer::{CommitMode, Consumer, StreamConsumer},
-    ClientConfig, Message, OwnedMessage,
-    producer::{FutureProducer, FutureRecord},
-};
-use rdkafka::message::BorrowedMessage;
-use std::time::Duration;
-use std::sync::Arc;
-use tokio::sync::mpsc;
+//! Receives event and sends them to message channel
 use anyhow::Result;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
+use rdkafka::consumer::StreamConsumer;
+use tracing;
 
-/// Consumer loop
-/// A dedicated pool of workers handles the processing, asynchronous offset commiting and Dead
-/// Letter Queue (DLQ) routing.
-pub async fn run_consumer(brokers: &str) -> Result<()> {
-    // Initialize Consumer and DLQ Producer.
-    let consumer: StreamConsumer = ClientConfig::new()
-        .set("bootrap.servers", brokers)
-        .set("group.id", "landlord-service")
-        .set("enable.auto.commit", "false") // Manual commit for reliability
-        .set("auto.offset.reset", "earliest")
-        .set("session.timeout.ms", "45000") // 45s to prevent accidental rebalances
-        .set("max.poll.interval.ms", "300000") // 5m max window to process a batch
-        .set("fetch.min.bytes", "1048576") // 1MB batching for high throughput
-        .set("fetch.wait.max.ms", "50") // Wait up to 50ms to hit 1MB target
-        .create()?;
+use crate::helpers::user_types::{
+    UserJob
+};
 
-    // Thread safe and optimized for async DLQ forwading.
-    let dlq_producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", brokers)
-        .create()?;
+pub async fn run(
+    tx: mpsc::Sender<UserJob>,
+    shutdown: CancellationToken,
+    consumer: StreamConsumer,
+) -> Result<()> {
+    consumer.subscribe(&["user.registration", "user.login"])?;
 
-    let consumer = Arc::new(consumer);
-    let dlq_producer = Arc::new(dlq_producer);
-
-    consumer.subscribe(&[
-        "orgs.topic.registration",
-        "orgs_topic.org_login",
-        "user_topic.registration",
-        "user_topic.user_login",
-        "orgs_topic.update",
-        "orgs_topic.remove",
-        "user_topic.update",
-        "user_topic.remove",
-    ])?;
-
-    // Create a bounded channel to decouple fetching from processing.
-    // Backpressure: If workers fall behind, the channel fills up and stalls the fetch loop.
-    let (tx, rx) = mpsc::channel::<OwnedMessage>(1000);
-
-    // Spawn a pool of concurrent worker tasks
-    let num_workers = std::thread::available_parallelism()
-        .map(|n| n.get())
-        .unwrap_or(4);
-
-    let mut worker_rx = rx;
-    tokio::spawn(start_worker_pool(
-            num_workers, worker_rx,
-            consumer.clone(), dlq_producer.clone(),
-    ));
-
-    tracing::info!("Landlord Redpanda consumer started");
-
-    // High performance, non blocking event fetch loop
+    tracing::info!("Redpanda consumer started");
     loop {
-        match consumer.recv().await {
-            Ok(message) => {
-                // Convert BorrowedMessage to OwnedMessage to pass across threads safely.
-                let owned_msg = message.detach();
+        tokio::select! {
+            message = consumer.recv() => {
+                let message = message?;
+                let topic = message.topic();
+                let payload = message.payload().ok_or_else(|| anyhow::anyhow!("Message has no payload"))?;
 
-                // Send to workers. If channel is full, this blocks (creating backpressure)
-                if let Err(_) = tx.send(&message).await {
-                    tracing::error!("Worker channel closed. Exiting fetch loop");
-                    break;
-                }
+                let event = match topic {
+                    "user.registration" => {
+                        let event: RegistrationEvent = serde_json::from_slice(payload)?;
+                        UserJob::Registration(event)
+                    }
+                    "user.login" => {
+                        let event: LoginEvent = serde_json::from_slice(payload)?;
+                        UserJob::Login(event)
+                    }
 
+                    _ => {
+                        tracing::warn!(topic, "Unknown topic");
+                        continue;
+                    }
+                };
+
+                let job = UserJob {
+                    topic: message.topic().to_string(),
+                    partition: message.partition(),
+                    offset: message.offset(),
+                    event,
+                };
+
+                // Consumer has received the message, but we haven't acknowledged or committed it
+                // yet
+                tx.send(job).await?;
+                // In real implementation, you need to coordinate the Kafka offset with successful
+                // processing.
             }
-            Err(error) => {
-                tracing::error!(?error,"Redpanda fetch error");
-                // Prevent CPU spinning on broker failing
-                tokio::time::sleep(Duration::from_millis(500)).await;
+            
+            _ = shutdown.cancelled() => {
+                tracing::info!("Redpanda consumer shutting down");
+                break;
             }
         }
     }
-    Ok(())
-}
 
-async fn start_worker_pool(
-    mut num_workers: usize,
-    mut rx: mpsc::Receiver<OwnedMessage>,
-    consumer: Arc<StreamConsumer>,
-    dlq_producer: Arc<FutureProducer>,
-) {
-    // Read from shared channel queue.
-    while let Some(message) = rx.recv().await {
-        let consumer_clone = consumer.clone();
-        let dlq_clone = dlq_producer.clone();
-
-        // Process each message concurrently
-        tokio::spawn(async move {
-            match process_message(&message).await {
-                Ok(_) => {
-                    // Idempotent DB write succeeded . Commit offset asynchronously
-                    if let Err(e) = consumer_clone.commit_message(&message, CommitMode::Async) {
-                        tracing::warn!(?e, "Failed to commit offset");
-                    }
-                },
-                Err(err) => {
-                    tracing::error!(?err, "Processing failed. Routing to DLQ.");
-                    // Route to DLQ topic based on original topic name.
-                    let dlq_topic = format!("{}.failed", message.topic());
-                    let payload = message.payload().unwrap_or(&[]);
-
-                    let record = FutureRecord::to(&dlq_topic)
-                        .payload(payload)
-                        .key(message.key().unwrap_or(&[]));
-
-                    match dlq_clone.send(record, Duration::from_secs(3)).await {
-                        Ok(_) => {
-                            // Routed to DLQ safely. We can now commit broker offset.
-                            let _ = consumer_clone.commit_message(&message, CommitMode::Async);
-                        },
-                        Err((send_err, _)) => {
-                            tracing::critical!(?send_err, "DLQ shipment failed! Message is stuck.");
-                        }
-                    }
-                }
-            }
-        });
-    }
-}
-
-// The business logic. E.g the action to perform. if CRUD Operation etc.
-async fn process_message(message: &OwnedMessage) -> anyhow::Result<()> {
-    // Example of Idempotent SQL
-    // sqlx::query!("INSERT INTO user (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING", id,
-    // name);
     Ok(())
 }

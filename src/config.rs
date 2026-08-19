@@ -1,6 +1,14 @@
 use std::env;
+use anyhow::Result;
 use std::time::Duration;
 use sqlx::{PgPool, postgres::PgPoolOptions};
+use rdkafka::{
+    consumer::{Consumer, StreamConsumer},
+    producer::FutureProducer,
+    ClientConfig,
+};
+
+use crate::messaging::topics::auth_topics;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -37,4 +45,33 @@ pub async fn create_pool(database_url: &str) -> anyhow::Result<PgPool> {
         .connect(database_url)
         .await?;
     Ok(pool)
+}
+
+pub fn create_rp_consumer(rp_brokers: &str) -> Result<StreamConsumer> {
+    let consumer: StreamConsumer = ClientConfig::new()
+        .set("bootstrap.servers", rp_brokers)
+        .set("group.id", "landlord-service")
+        .set("enable.auto.commit", "false")
+        .set("auto.offset.reset", "earliest")
+        .set("enable.auto.offset.store", "false")
+        .create()?;
+
+    // Topics to listen to.
+    consumer.subscribe(&[
+        auth_topics::USER_REGISTRATION,
+        auth_topics::USER_LOGIN,
+    ])?;
+
+    Ok(consumer)
+}
+
+pub fn create_rp_producer(rp_brokers: &str) -> Result<FutureProducer> {
+    let producer = ClientConfig::new()
+        .set("bootstrap.servers", rp_brokers)
+        .set("message.timeout.ms", "5000")
+        .set("acks", "all")
+        .set("enable.idempotence", "true")
+        .create()?;
+
+    Ok(producer)
 }
