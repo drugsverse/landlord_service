@@ -10,7 +10,7 @@ use rdkafka::{
 
 use crate::service;
 use crate::helpers::user_types::{
-    UserJob,
+    UserJob, UserEvent, UserLoginCredentials,
 };
 
 pub async fn run(
@@ -29,11 +29,12 @@ pub async fn run(
                         ).await
                     }
 
-                    //UserEvent::Login(event) => {
-                    //    service::user::login_user(
-                    //        &db, &producer, event
-                    //    ).await
-                    //}
+                    UserEvent::Login(event) => {
+                        todo!();
+                        //service::user::login_user(
+                        //    &db, &producer, event
+                        //).await
+                    }
                 };
 
                 match result {

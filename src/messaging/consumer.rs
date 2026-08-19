@@ -2,11 +2,15 @@
 use anyhow::Result;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
-use rdkafka::consumer::StreamConsumer;
+use rdkafka::{
+    consumer::StreamConsumer,
+    Message,
+};
 use tracing;
 
 use crate::helpers::user_types::{
-    UserJob
+    UserJob, UserCreatedEvent, UserLoginCredentials,
+    UserEvent,
 };
 
 pub async fn run(
@@ -14,7 +18,7 @@ pub async fn run(
     shutdown: CancellationToken,
     consumer: StreamConsumer,
 ) -> Result<()> {
-    consumer.subscribe(&["user.registration", "user.login"])?;
+    //consumer.subscribe(&["user.registration", "user.login"])?;
 
     tracing::info!("Redpanda consumer started");
     loop {
@@ -26,12 +30,12 @@ pub async fn run(
 
                 let event = match topic {
                     "user.registration" => {
-                        let event: RegistrationEvent = serde_json::from_slice(payload)?;
-                        UserJob::Registration(event)
+                        let event: UserCreatedEvent = serde_json::from_slice(payload)?;
+                        UserEvent::Registration(event)
                     }
                     "user.login" => {
-                        let event: LoginEvent = serde_json::from_slice(payload)?;
-                        UserJob::Login(event)
+                        let event: UserLoginCredentials = serde_json::from_slice(payload)?;
+                        UserEvent::Login(event)
                     }
 
                     _ => {
