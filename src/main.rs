@@ -20,12 +20,24 @@ use anyhow::Result;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 use tracing;
+use tracing_subscriber;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    // Initialize the environment variables from .env
+    let _ = dotenvy::dotenv();
+
+    // Initialize the logger subscriber to print to standard output
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
+    tracing::info!("Application booting up...");
 
     // Infrastructure setup and initialization
-    let config = Config::from_env()?;
+    let config = Config::from_env().map_err(|e| {
+        tracing::error!("Configuration Loading Failed: {:?}", e);
+        e
+    })?;
     let db = create_pool(&config.database_url).await?;
     let consumer = create_rp_consumer(&config.redpanda_brokers)?;
     let producer = create_rp_producer(&config.redpanda_brokers)?;
