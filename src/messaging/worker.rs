@@ -24,16 +24,17 @@ pub async fn run(
             Some(job) = rx.recv() => {
                 let result = match job.event {
                     UserEvent::Registration(event) => {
+                        // Processing user reg event. Registering new user.
                         service::user::register_user(
                             &db, &producer, event
                         ).await
                     }
 
                     UserEvent::Login(event) => {
-                        todo!();
-                        //service::user::login_user(
-                        //    &db, &producer, event
-                        //).await
+                        // Processing the login event.
+                        service::user::login_user(
+                            &db, &producer, event
+                        ).await
                     }
                 };
 

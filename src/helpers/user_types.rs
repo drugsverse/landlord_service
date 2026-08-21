@@ -109,6 +109,14 @@ pub struct ConnectedIdentityView {
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoginIdentityEvent {
+    pub identity_id: Option<Uuid>,
+    pub provider: AuthProvider,
+    pub provider_id: String, // Email or Apple/Google ID.
+    pub password_hash: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct AuditLogView {
     pub log_id: Uuid,
@@ -184,7 +192,7 @@ pub struct UserCreatedEvent {
 #[derive(Debug)]
 pub enum UserEvent{
     Registration(UserCreatedEvent),
-    Login(UserLoginCredentials),
+    Login(LoginIdentityEvent),
 }
 
 pub struct UserJob {

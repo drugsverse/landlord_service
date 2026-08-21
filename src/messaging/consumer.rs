@@ -9,8 +9,11 @@ use rdkafka::{
 use tracing;
 
 use crate::helpers::user_types::{
-    UserJob, UserCreatedEvent, UserLoginCredentials,
+    UserJob, UserCreatedEvent, LoginIdentityEvent,
     UserEvent,
+};
+use crate::messaging::topics::{
+    auth_topics,
 };
 
 pub async fn run(
@@ -29,12 +32,12 @@ pub async fn run(
                 let payload = message.payload().ok_or_else(|| anyhow::anyhow!("Message has no payload"))?;
 
                 let event = match topic {
-                    "user.registration" => {
+                    auth_topics::USER_REGISTRATION => {
                         let event: UserCreatedEvent = serde_json::from_slice(payload)?;
                         UserEvent::Registration(event)
                     }
-                    "user.login" => {
-                        let event: UserLoginCredentials = serde_json::from_slice(payload)?;
+                    auth_topics::USER_LOGIN => {
+                        let event: LoginIdentityEvent = serde_json::from_slice(payload)?;
                         UserEvent::Login(event)
                     }
 
