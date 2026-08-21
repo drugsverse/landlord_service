@@ -91,7 +91,20 @@ async fn main() -> anyhow::Result<()> {
     // Set a timeout so a stuck worker won't hand the container forever.
     let shutdown_timeout = std::time::Duration::from_secs(15);
     let _ = tokio::time::timeout(shutdown_timeout, async {
-        let _ = tokio::join!(consumer_task, worker_task, monitoring_task);
+        // If the selector already consumed a task, it will be skipped.
+        // Otherwise, wait for it.
+        if !consumer_task.is_finished() {
+            let _ = consumer_task.await;
+        }
+        
+        if !worker_task.is_finished() {
+            let _ = worker_task.await;
+        }
+
+        if !monitoring_task.is_finished() {
+            let _ = monitoring_task.await;
+        }
+
     }).await;
 
     tracing::info!("All systems terminated cleanly");
