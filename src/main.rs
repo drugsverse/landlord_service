@@ -48,8 +48,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Spawn long lived tasks. Clone before moving.
     let consumer_shutdown = shutdown.clone();
+    let dlq_producer = producer.clone();
     // Redpanda consumer. No .await since we have removed async move entirely. Tokio will handle .await
-    let mut consumer_task = tokio::spawn(consumer::run(tx, consumer_shutdown, consumer));
+    let mut consumer_task = tokio::spawn(consumer::run(tx, consumer_shutdown, consumer, dlq_producer));
 
     // Start workers. No .await since we have removed async move block. Tokio will handle .await
     let worker_shutdown = shutdown.clone();
