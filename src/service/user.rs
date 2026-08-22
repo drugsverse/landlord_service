@@ -4,12 +4,12 @@ use sqlx::PgPool;
 use rdkafka::producer::FutureProducer;
 
 use crate::{
-    helpers::user_types::{UserCreatedEvent, LoginIdentityEvent},
+    helpers::user_types::{UserRegistrationEvent, LoginIdentityEvent},
     repository::users::{save_new_user_tx},
 };
 
 pub async fn register_user(
-    db: &PgPool, producer: &FutureProducer, event: UserCreatedEvent
+    db: &PgPool, producer: &FutureProducer, event: UserRegistrationEvent
 ) ->Result<()> {
     // We will call the function to persist user to db here.
     println!("User creation event is {:#?}", event);

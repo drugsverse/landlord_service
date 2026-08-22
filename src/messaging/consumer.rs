@@ -11,7 +11,7 @@ use rdkafka::{
 use tracing;
 
 use crate::helpers::user_types::{
-    UserJob, UserCreatedEvent, LoginIdentityEvent,
+    UserJob, UserRegistrationEvent, LoginIdentityEvent,
     UserEvent,
 };
 use crate::messaging::topics::{
@@ -44,7 +44,7 @@ pub async fn run(
 
                 let event = match topic {
                     auth_topics::USER_REGISTRATION => {
-                        match serde_json::from_slice::<UserCreatedEvent>(payload) {
+                        match serde_json::from_slice::<UserRegistrationEvent>(payload) {
                             Ok(parsed_payload) => UserEvent::Registration(parsed_payload),
                             Err(e) => {
                                 tracing::warn!("Malformed payload on {}. Routing to DLQ. Error: {}", topic, e);

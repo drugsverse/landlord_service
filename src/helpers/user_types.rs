@@ -188,10 +188,22 @@ pub struct UserCreatedEvent {
     pub provider: AuthProvider,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserRegistrationEvent {
+    pub user_id: Uuid,
+    pub username: String,
+    pub email: String,
+    // Here we have clear text strings for the streaming ecosystem, decrypted before sending.
+    pub first_name: String,
+    pub last_name: String,
+    pub telephone: String,
+    pub country: String,
+}
+
 /// APPLICATION EVENTS.
 #[derive(Debug)]
 pub enum UserEvent{
-    Registration(UserCreatedEvent),
+    Registration(UserRegistrationEvent),
     Login(LoginIdentityEvent),
 }
 
