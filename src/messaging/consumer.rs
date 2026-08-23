@@ -86,8 +86,37 @@ pub async fn run(
                     }
 
                     auth_topics::USER_LOGIN => {
-                        let event: LoginIdentityEvent = serde_json::from_slice(payload)?;
-                        UserEvent::Login(event)
+                        match serde_json::from_slice::<LoginIdentityEvent>(payload) {
+                            Ok(parsed_login) => UserEvent::Login(parsed_login),
+                            Err(e) => {
+                                tracing::warn!("Malformed payload on {}. Routing to DLQ. Error: {}", topic, e);
+                                let owned_payload = payload.to_vec();
+                                let owned_key = message.key().unwrap_or(&[]).to_vec();
+                                let error_string = e.to_string();
+                                let target_topic = "user.login.dlq".to_string();
+                                let producer_clone = producer.clone();
+                                tokio::spawn(async move {
+                                    let dlq_record = FutureRecord::to(&target_topic)
+                                        .key(&owned_key)
+                                        .payload(&owned_payload)
+                                        .headers(
+                                            OwnedHeaders::new().insert(
+                                                rdkafka::message::Header {
+                                                    key: "x-dead-letter-reason",
+                                                    value: Some(&error_string),
+                                                }
+                                            )
+                                        );
+                                    if let Err((err, _)) = producer_clone.send(dlq_record, tokio::time::Duration::from_secs(3)).await {
+                                        tracing::error!("CRITICAL: Failed to write DLQ topic! Error: {:?}", err);
+                                    }
+                                });
+
+                                // Store offset for the malformed payload
+                                let _ = consumer.store_offset(message.topic(), message.partition(), message.offset());
+                                continue;
+                            }
+                        }
                     }
 
                     _ => {
