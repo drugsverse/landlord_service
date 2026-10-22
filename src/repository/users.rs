@@ -82,7 +82,7 @@ pub async fn save_new_user_tx(
 
 /// Fetching the login credentials with email.
 pub async fn fetch_login_credentials(
-    pool: &PgPool, provider: AuthProvider, email: &str,
+    pool: &PgPool, provider: AuthProvider, provider_id: &str,
 ) -> Result<Option<UserLoginCredentials>, sqlx::Error> {
     let login = sqlx::query!(
         r#"
@@ -95,7 +95,7 @@ pub async fn fetch_login_credentials(
             WHERE ui.provider = $1 AND ui.provider_id = $2
                 AND u.deleted_at IS NULL
         "#,
-        provider as AuthProvider, email,
+        provider as AuthProvider, provider_id,
     ).fetch_optional(pool).await?;
 
     Ok(login.map(|l| UserLoginCredentials {

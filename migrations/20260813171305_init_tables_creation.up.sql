@@ -1,9 +1,9 @@
--- DEFINE NATIVE POSTGRES ENUM TYPES
 CREATE SCHEMA IF NOT EXISTS user_members;
 SET search_path TO user_members, public;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public;
 
+-- DEFINE NATIVE POSTGRES ENUM TYPES
 CREATE TYPE user_role AS ENUM ('User', 'Moderator', 'Admin');
 CREATE TYPE auth_provider AS ENUM ('Local', 'Google', 'Apple');
 CREATE TYPE user_audit_action AS ENUM (
